@@ -1,0 +1,151 @@
+#include <msp430f5529.h>
+#include <stdint.h>
+
+#define CS_ANILLO_PIN   BIT0
+
+// ==================== PROTOTIPOS ====================
+void configurarUART(void);
+void enviarChar(char c);
+void enviarCadena(const char *str);
+void enviarByteHex(uint8_t num);
+void delay_ms(uint16_t ms);
+
+void initSPI_Master(void);
+void SPI_ChipSelect(uint8_t select);
+uint8_t SPI_Transfer(uint8_t data);
+
+void testComunicacionDirecta(void);
+
+// ==================== UART ====================
+void configurarUART(void)
+{
+    P4SEL |= BIT4 + BIT5;
+    UCA1CTL1 |= UCSWRST;
+    UCA1CTL0 = 0x00;
+    UCA1CTL1 |= UCSSEL_1;
+    UCA1BR0 = 3;
+    UCA1BR1 = 0;
+    UCA1MCTL = UCBRS_3;
+    UCA1CTL1 &= ~UCSWRST;
+}
+
+void enviarChar(char c)
+{
+    while(!(UCA1IFG & UCTXIFG));
+    UCA1TXBUF = c;
+}
+
+void enviarCadena(const char *str)
+{
+    while(*str) enviarChar(*str++);
+}
+
+void enviarByteHex(uint8_t num)
+{
+    uint8_t high = (num >> 4) & 0x0F;
+    uint8_t low = num & 0x0F;
+    enviarChar(high < 10 ? '0' + high : 'A' + high - 10);
+    enviarChar(low < 10 ? '0' + low : 'A' + low - 10);
+}
+
+void delay_ms(uint16_t ms)
+{
+    uint16_t i, j;
+    for(i = 0; i < ms; i++) {
+        for(j = 0; j < 500; j++) {
+            __no_operation();
+        }
+    }
+}
+
+// ==================== SPI MASTER (MODO 0) ====================
+void initSPI_Master(void)
+{
+    P3SEL |= BIT0 + BIT1 + BIT2;
+    P2DIR |= CS_ANILLO_PIN;
+    P2OUT |= CS_ANILLO_PIN;
+
+    UCB0CTL1 |= UCSWRST;
+
+    // Forzar MSB primero
+    UCB0CTL0 = UCMST + UCSYNC + UCMSB;  // UCMSB = 1
+    UCB0CTL1 |= UCSSEL_2;
+    UCB0BR0 = 40;
+    UCB0BR1 = 0;
+    UCB0CTL1 &= ~UCSWRST;
+
+    enviarCadena("[SPI] Inicializado - MSB primero\r\n");
+}
+
+void SPI_ChipSelect(uint8_t select)
+{
+    if(select) {
+        P2OUT &= ~CS_ANILLO_PIN;
+    } else {
+        P2OUT |= CS_ANILLO_PIN;
+    }
+}
+
+uint8_t SPI_Transfer(uint8_t data)
+{
+    UCB0TXBUF = data;
+    while(!(UCB0IFG & UCRXIFG));
+    return UCB0RXBUF;
+}
+
+// ==================== TEST CON PRIMER NODO ====================
+void testComunicacionDirecta(void)
+{
+    uint8_t i;
+    uint8_t testData[] = {0x55, 0xAA, 0x33, 0xCC, 0x78, 0x87};
+    uint8_t respuesta;
+
+    enviarCadena("\r\n=== TEST CON PRIMER NODO ===\r\n");
+    enviarCadena("(Solo conecta el MSP430 al primer Arduino)\r\n");
+    enviarCadena("========================================\r\n");
+
+    for(i = 0; i < 6; i++) {
+        SPI_ChipSelect(1);
+        respuesta = SPI_Transfer(testData[i]);
+        SPI_ChipSelect(0);
+
+        enviarCadena("Env:0x");
+        enviarByteHex(testData[i]);
+        enviarCadena(" Rec:0x");
+        enviarByteHex(respuesta);
+
+        if(respuesta == testData[i]) {
+            enviarCadena(" OK (ECO correcto)\r\n");
+        } else if(respuesta == 0xFF) {
+            enviarCadena(" ERROR - Sin respuesta\r\n");
+        } else {
+            enviarCadena(" ERROR - Dato corrupto (0x");
+            enviarByteHex(respuesta);
+            enviarCadena(")\r\n");
+        }
+
+        delay_ms(300);
+    }
+}
+
+// ==================== MAIN ====================
+void main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;
+
+    configurarUART();
+    initSPI_Master();
+
+    enviarCadena("\r\n========================================\r\n");
+    enviarCadena("   TEST SPI CON PRIMER NODO\r\n");
+    enviarCadena("========================================\r\n");
+    enviarCadena("Conecta solo el MSP430 al Arduino Nano\r\n");
+    enviarCadena("MSP: P3.0(MOSI), P3.1(MISO), P3.2(SCLK), P2.0(CS)\r\n");
+    enviarCadena("Nano: D11(MOSI), D12(MISO), D13(SCLK), D10(CS)\r\n");
+    enviarCadena("========================================\r\n");
+
+    while(1) {
+        testComunicacionDirecta();
+        delay_ms(3000);
+    }
+}
