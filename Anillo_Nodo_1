@@ -1,0 +1,57 @@
+#include <SPI.h>
+
+#define CS_PIN      10
+#define ID_NODO     1
+
+volatile uint8_t receivedData = 0;
+volatile bool dataReady = false;
+
+void setup() {
+  Serial.begin(9600);
+  
+  pinMode(CS_PIN, INPUT_PULLUP);
+  pinMode(MISO, OUTPUT);
+  pinMode(MOSI, INPUT);
+  pinMode(SCK, INPUT);
+  
+  // MODO 0: CPOL=0, CPHA=0
+  SPCR = (1 << SPE) | (0 << CPHA) | (0 << CPOL);
+  SPCR &= ~(1 << MSTR);
+  SPDR = 0x00;
+  
+  SPI.attachInterrupt();
+  
+  Serial.println("========================================");
+  Serial.println("NANO #1 - Nodo 1 (Reenvío)");
+  Serial.println("Modo SPI 0 - Esclavo");
+  Serial.println("========================================");
+  Serial.print("CS en pin: ");
+  Serial.println(CS_PIN);
+  Serial.println("Esperando datos...");
+  Serial.println("========================================");
+}
+
+ISR(SPI_STC_vect) {
+  if(digitalRead(CS_PIN) == LOW) {
+    receivedData = SPDR;
+    dataReady = true;
+  }
+}
+
+void loop() {
+  if(dataReady) {
+    dataReady = false;
+    
+    uint8_t data = receivedData;
+    
+    Serial.print("[N1] Recibido: 0x");
+    if(data < 0x10) Serial.print("0");
+    Serial.println(data, HEX);
+    
+    // Reenviar al siguiente nodo (Nano #2)
+    SPDR = data;
+    
+    delayMicroseconds(100);
+  }
+  delay(1);
+}
