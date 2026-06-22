@@ -1,0 +1,59 @@
+// ============================================================
+//   LOOPBACK GPIO - ARDUINO MEGA
+// ============================================================
+
+#define MOSI_PIN   51
+#define MISO_PIN   50
+
+void setup() {
+  Serial.begin(9600);
+  
+  Serial.println("========================================");
+  Serial.println("   LOOPBACK GPIO - ARDUINO MEGA");
+  Serial.println("========================================");
+  Serial.println("Conecta D51 a D50");
+  Serial.println("========================================");
+  
+  pinMode(MOSI_PIN, OUTPUT);
+  pinMode(MISO_PIN, INPUT);
+}
+
+void loop() {
+  uint8_t i;
+  uint8_t testData[] = {0x55, 0xAA, 0x33, 0xCC, 0x78, 0x87};
+  
+  for(i = 0; i < 6; i++) {
+    // Enviar byte bit por bit
+    for(int bit = 7; bit >= 0; bit--) {
+      digitalWrite(MOSI_PIN, (testData[i] >> bit) & 1);
+      delayMicroseconds(10);
+    }
+    
+    delay(10);
+    
+    // Leer byte
+    uint8_t recibido = 0;
+    for(int bit = 7; bit >= 0; bit--) {
+      if(digitalRead(MISO_PIN)) recibido |= (1 << bit);
+      delayMicroseconds(10);
+    }
+    
+    Serial.print("Env: 0x");
+    if(testData[i] < 0x10) Serial.print("0");
+    Serial.print(testData[i], HEX);
+    Serial.print(" Rec: 0x");
+    if(recibido < 0x10) Serial.print("0");
+    Serial.print(recibido, HEX);
+    
+    if(recibido == testData[i]) {
+      Serial.println(" OK");
+    } else {
+      Serial.println(" ERROR");
+    }
+    
+    delay(500);
+  }
+  
+  Serial.println("------------------------");
+  delay(3000);
+}
